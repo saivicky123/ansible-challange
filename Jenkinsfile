@@ -1,37 +1,77 @@
 pipeline {
     agent any
+
     environment {
-        // These IDs must match exactly what you created in Jenkins
-        AWS_ID = 'aws-keys'
-        SSH_ID = 'ssh-key-file'
+        AWS_DEFAULT_REGION = 'us-east-1'
     }
+
+    options {
+        timestamps()
+        ansiColor('xterm')
+    }
+
     stages {
+
         stage('Checkout') {
             steps {
                 checkout scm
             }
         }
-        stage('Terraform Apply') {
+
+        stage('Terraform Init & Apply') {
             steps {
-                withCredentials([aws(credentialsId: "${AWS_ID}", accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
-                    sh 'terraform init'
-                    sh 'terraform apply -auto-approve'
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                     credentialsId: 'aws-creds']
+                ]) {
+                    sh '''
+                        set -e
+                        terraform init
+                        terraform apply -auto-approve
+                    '''
                 }
             }
         }
+
+        stage('Wait for EC2 to be Ready') {
+            steps {
+                echo 'Waiting for instances to initialize...'
+                sleep 45
+            }
+        }
+
         stage('Ansible Deploy') {
             steps {
-                echo "Waiting for instances to initialize..."
-                sleep 45
-                withCredentials([file(credentialsId: "${SSH_ID}", variable: 'SSH_KEY_PATH')]) {
-                    sh "ansible-playbook -i inventory.ini setup.yml --private-key ${SSH_KEY_PATH} --ssh-common-args='-o StrictHostKeyChecking=no'"
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'jenkins-ssh-key',
+                        keyFileVariable: 'SSH_KEY_PATH',
+                        usernameVariable: 'SSH_USER'
+                    )
+                ]) {
+                    sh '''
+                        set -e
+                        ansible-playbook \
+                          -i inventory.ini \
+                          setup.yml \
+                          -u "$SSH_USER" \
+                          --private-key "$SSH_KEY_PATH" \
+                          --ssh-common-args='-o StrictHostKeyChecking=no'
+                    '''
                 }
             }
         }
     }
+
     post {
         success {
-            echo "Deployment successful! Access the frontend IP on port 80."
+            echo 'Pipeline completed successfully'
+        }
+        failure {
+            echo 'Pipeline failed'
+        }
+        always {
+            cleanWs()
         }
     }
 }
