@@ -53,7 +53,6 @@ pipeline {
                         ansible-playbook \
                           -i inventory.ini \
                           setup.yml \
-                          -u "$SSH_USER" \
                           --private-key "$SSH_KEY_PATH" \
                           --ssh-common-args='-o StrictHostKeyChecking=no'
                     '''
