@@ -36,6 +36,13 @@
     - name: Install Nginx
       package: name=nginx state=present
 
+    - name: Stop Nginx to clear Port 80
+      service: name=nginx state=stopped
+      ignore_errors: yes
+
+    - name: Force kill any process on Port 80
+      shell: fuser -k 80/tcp || true
+
     - name: Wipe and Recreate conf.d directory
       file:
         path: /etc/nginx/conf.d
@@ -68,11 +75,17 @@
               location / {
                   proxy_pass http://{{ groups['backend'][0] }}:19999;
                   proxy_set_header Host $host;
+                  proxy_set_header X-Real-IP $remote_addr;
               }
           }
+
+    - name: Validate Nginx Config
+      command: nginx -t
+      register: config_check
 
     - name: Final Service Start
       service:
         name: nginx
-        state: restarted
+        state: started
         enabled: yes
+      when: config_check.rc == 0
