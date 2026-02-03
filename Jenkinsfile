@@ -21,7 +21,7 @@ pipeline {
             steps {
                 withCredentials([
                     [$class: 'AmazonWebServicesCredentialsBinding',
-                     credentialsId: 'aws-creds']
+                     credentialsId: 'aws-keys']
                 ]) {
                     sh '''
                         set -e
@@ -43,7 +43,7 @@ pipeline {
             steps {
                 withCredentials([
                     sshUserPrivateKey(
-                        credentialsId: 'jenkins-ssh-key',
+                        credentialsId: 'ssh-key-file',
                         keyFileVariable: 'SSH_KEY_PATH',
                         usernameVariable: 'SSH_USER'
                     )
