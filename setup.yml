@@ -1,4 +1,7 @@
 ---
+############################
+# OS HARDENING (ALL HOSTS)
+############################
 - name: OS Hardening for Linux
   hosts: all
   become: yes
@@ -8,29 +11,45 @@
         state: disabled
       when: ansible_os_family == "RedHat"
 
-    - name: Stop and disable firewall if present
+    - name: Stop firewalld on RedHat
       service:
-        name: "{{ ansible_os_family == 'RedHat' | ternary('firewalld', 'ufw') }}"
+        name: firewalld
         state: stopped
         enabled: no
+      when: ansible_os_family == "RedHat"
       ignore_errors: yes
 
-# ---------------- BACKEND ----------------
+    - name: Stop ufw on Debian
+      service:
+        name: ufw
+        state: stopped
+        enabled: no
+      when: ansible_os_family == "Debian"
+      ignore_errors: yes
+
+############################
+# BACKEND – NETDATA
+############################
 - name: Configure Backend (Netdata)
   hosts: backend
   become: yes
   tasks:
-    - name: Install Netdata (only if not installed)
-      shell: |
-        wget -O /tmp/kickstart.sh https://get.netdata.cloud/kickstart.sh
-        sh /tmp/kickstart.sh --non-interactive
+    - name: Install required packages
+      package:
+        name:
+          - curl
+          - bash
+        state: present
+
+    - name: Install Netdata if not installed
+      command: bash -c "curl -fsSL https://get.netdata.cloud/kickstart.sh | bash -s -- --non-interactive"
       args:
         creates: /usr/sbin/netdata
 
     - name: Ensure Netdata runs on port 19999
       lineinfile:
         path: /etc/netdata/netdata.conf
-        regexp: '^\\s*default port ='
+        regexp: '^\s*default port ='
         line: '    default port = 19999'
       notify: Restart Netdata
 
@@ -40,12 +59,14 @@
         name: netdata
         state: restarted
 
-# ---------------- FRONTEND ----------------
-- name: Configure Frontend (Nginx Proxy)
+############################
+# FRONTEND – NGINX PROXY
+############################
+- name: Configure Frontend (Nginx Reverse Proxy)
   hosts: frontend
   become: yes
   vars:
-    backend_ip: "{{ hostvars[groups['backend'][0]].ansible_host | default(groups['backend'][0]) }}"
+    backend_ip: "{{ hostvars[groups['backend'][0]].ansible_host }}"
 
   tasks:
     - name: Install Nginx
@@ -53,18 +74,12 @@
         name: nginx
         state: present
 
-    - name: Reset nginx conf.d directory
-      file:
-        path: /etc/nginx/conf.d
-        state: directory
-        mode: '0755'
-
-    - name: Write clean nginx.conf
+    - name: Write nginx.conf (OS-aware)
       copy:
         dest: /etc/nginx/nginx.conf
         mode: '0644'
         content: |
-          user nginx;
+          user {{ ansible_os_family == 'Debian' | ternary('www-data', 'nginx') }};
           worker_processes auto;
           error_log /var/log/nginx/error.log warn;
           pid /run/nginx.pid;
@@ -77,13 +92,9 @@
               include       /etc/nginx/mime.types;
               default_type  application/octet-stream;
 
-              log_format main '$remote_addr - $remote_user [$time_local] "$request" '
-                              '$status $body_bytes_sent "$http_referer" '
-                              '"$http_user_agent" "$http_x_forwarded_for"';
+              access_log /var/log/nginx/access.log;
 
-              access_log /var/log/nginx/access.log main;
-
-              sendfile        on;
+              sendfile on;
               keepalive_timeout 65;
 
               include /etc/nginx/conf.d/*.conf;
@@ -110,12 +121,7 @@
 
     - name: Validate nginx configuration
       command: nginx -t
-      register: nginx_test
       changed_when: false
-
-    - name: Show nginx validation output
-      debug:
-        var: nginx_test.stderr
 
     - name: Start and enable nginx
       service:
