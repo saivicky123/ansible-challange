@@ -17,16 +17,11 @@ pipeline {
         /* ---------------- TERRAFORM ---------------- */
         stage('Terraform Init & Apply') {
             steps {
-                withCredentials([
-                    string(credentialsId: 'aws-access-key', variable: 'AWS_ACCESS_KEY_ID'),
-                    string(credentialsId: 'aws-secret-key', variable: 'AWS_SECRET_ACCESS_KEY')
-                ]) {
-                    sh '''
-                        set -e
-                        terraform init
-                        terraform apply -auto-approve
-                    '''
-                }
+                sh '''
+                    set -e
+                    terraform init
+                    terraform apply -auto-approve
+                '''
             }
         }
 
