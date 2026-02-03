@@ -1,0 +1,56 @@
+---
+- name: OS Hardening for Linux
+  hosts: all
+  become: yes
+  tasks:
+    - name: Disable SELinux (Amazon Linux)
+      selinux:
+        state: disabled
+      when: ansible_os_family == "RedHat"
+
+    - name: Disable Firewalld/UFW
+      service:
+        name: "{{ (ansible_os_family == 'RedHat') | ternary('firewalld', 'ufw') }}"
+        state: stopped
+        enabled: no
+
+- name: Configure Backend (Netdata)
+  hosts: backend
+  become: yes
+  tasks:
+    - name: Install Netdata from official repo
+      [cite_start]shell: curl -s https://my-netdata.io/kickstart.sh | sh -s -- --non-interactive [cite: 7]
+    
+    - name: Ensure Netdata runs on 19999
+      lineinfile:
+        path: /etc/netdata/netdata.conf
+        regexp: 'default port = '
+        line: '    default port = 19999'
+      notify: Restart Netdata
+
+  handlers:
+    - name: Restart Netdata
+      service: name=netdata state=restarted
+
+- name: Configure Frontend (Nginx Proxy)
+  hosts: frontend
+  become: yes
+  tasks:
+    - name: Install Nginx
+      yum: name=nginx state=present
+    
+    - name: Configure Proxy to Backend
+      copy:
+        dest: /etc/nginx/conf.d/proxy.conf
+        content: |
+          server {
+              listen 80;
+              location / {
+                  proxy_pass http://{{ groups['backend'][0] }}:19999;
+              }
+          }
+      notify: Reload Nginx
+
+  handlers:
+    - name: Reload Nginx
+      service: name=nginx state=reloaded
