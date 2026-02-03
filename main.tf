@@ -5,7 +5,7 @@ provider "aws" {
 resource "aws_instance" "amazon_linux_vm" {
   ami           = "ami-0532be01f26a3de55" # Amazon Linux 2 AMI ID
   instance_type = "t3.micro"
-  key_name      = "Jenkins-M" 
+  key_name      = "Jenkins-M2" 
 
   tags = {
     Name = "c8.local"
@@ -21,7 +21,7 @@ resource "aws_instance" "amazon_linux_vm" {
 resource "aws_instance" "ubuntu_vm" {
   ami           = "ami-0b6c6ebed2801a5cb" # Ubuntu 22.04 AMI ID
   instance_type = "t3.micro"
-  key_name      = "Jenkins-M"
+  key_name      = "Jenkins-M2"
 
   tags = {
     Name = "u21.local"
